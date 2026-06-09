@@ -160,9 +160,14 @@ html,body{
   padding:60px 20px 30px;
   opacity:0;pointer-events:none;text-align:center;
   transition:opacity 1.8s ease;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
 }
 .screen.visible{opacity:1;pointer-events:auto}
+.screen-center{justify-content:center;overflow-y:hidden;}
 .scroll-screen{overflow-y:auto;justify-content:flex-start;padding-top:72px;padding-bottom:40px}
+.screen::-webkit-scrollbar{width:3px}
+.screen::-webkit-scrollbar-thumb{background:rgba(232,165,152,.35);border-radius:2px}
+.screen::-webkit-scrollbar-track{background:transparent}
 
 /* ══ TEXT ══ */
 .line{
@@ -641,7 +646,7 @@ html,body{
 </div>
 
 <!-- ═══ CHAPTER 1 — 12 YEARS ═══ -->
-<div class="screen" id="s1">
+<div class="screen scroll-screen" id="s1">
   <div class="chap-lbl" id="lbl1">CHAPTER 1 // "12 Years"</div>
   <div id="school-scene">
     <div class="sc-room">
@@ -691,7 +696,7 @@ html,body{
 </div>
 
 <!-- ═══ CHAPTER 2 — TWO MORE YEARS ═══ -->
-<div class="screen" id="s2">
+<div class="screen scroll-screen" id="s2">
   <div class="chap-lbl" id="lbl2">CHAPTER 2 // "Two More Years"</div>
 
   <div id="ch2-intro" style="max-width:560px;display:flex;flex-direction:column;align-items:center;gap:4px">
@@ -727,7 +732,7 @@ html,body{
 </div>
 
 <!-- ═══ CHAPTER 3 — THE SPLIT ═══ -->
-<div class="screen" id="s3">
+<div class="screen scroll-screen" id="s3">
   <div class="chap-lbl" id="lbl3">CHAPTER 3 // "The Split"</div>
 
   <div id="road-wrap">
@@ -738,7 +743,7 @@ html,body{
       <path d="M8 8 Q28 -8 50 -22" fill="none" stroke="#e8a598" stroke-width="1" stroke-dasharray="55" stroke-dashoffset="55" id="r-lret" opacity=".7"/>
       <path d="M92 8 Q72 -8 50 -22" fill="none" stroke="#f2c47e" stroke-width="1" stroke-dasharray="55" stroke-dashoffset="55" id="r-rret" opacity=".7"/>
     </svg>
-    <div class="r-sign" id="rs-l">RVCE · AIR 223</div>
+    <div class="r-sign" id="rs-l">RVCE</div>
     <div class="r-sign" id="rs-r">BMS College</div>
   </div>
 
@@ -825,7 +830,7 @@ html,body{
 </div>
 
 <!-- ═══ CHAPTER 5 — PARALLEL LINES ═══ -->
-<div class="screen" id="s5">
+<div class="screen scroll-screen" id="s5">
   <div class="chap-lbl" id="lbl5" style="z-index:10;position:relative">CHAPTER 5 // "Parallel Lines"</div>
 
   <div id="para-wrap">
@@ -896,7 +901,7 @@ html,body{
 </div>
 
 <!-- ═══ FINAL ═══ -->
-<div class="screen" id="s-final">
+<div class="screen scroll-screen" id="s-final">
   <div style="max-width:560px;display:flex;flex-direction:column;align-items:center;gap:4px">
     <div class="line" id="fl0">Fourteen years ago, we were in the same classroom.</div>
     <div class="sp2"></div>
@@ -914,7 +919,7 @@ html,body{
     <div class="line amber" id="fl8">Still my favorite person to tell things to first.</div>
     <div class="line italic" id="fl9">Still — after all of it — exactly who I'd choose.</div>
     <div class="sp3"></div>
-    <div class="line big" id="fl10">Happy Birthday. 🎂</div>
+    <div class="line big" id="fl10">Happy Birthday Charmy, I love u soo much 🎂❤️</div>
     <div class="sp"></div>
     <div class="line small rose" id="fl11">Nineteen looks good on you.</div>
     <button class="btn" id="btn-replay" style="margin-top:40px;font-size:14px;border-radius:40px">↺ Read again</button>
@@ -1008,7 +1013,7 @@ function getAC() {
     masterGain.gain.value = 0.0;
     masterGain.connect(AC.destination);
     reverb = createReverb(4.5, 3.0);
-    reverb.connect(masterGain);
+    // reverb now routes internally: conv → lpf → masterGain (set up in createReverb)
   }
   if (AC.state === 'suspended') AC.resume();
   return AC;
@@ -1018,13 +1023,27 @@ function createReverb(dur, decay) {
   const ac = getAC();
   const len = ac.sampleRate * dur;
   const buf = ac.createBuffer(2, len, ac.sampleRate);
+  // Use a smooth exponential decay envelope to avoid clicks/crackle
   for (let c = 0; c < 2; c++) {
     const d = buf.getChannelData(c);
-    for (let i = 0; i < len; i++)
-      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    // Pre-delay fade-in for first 20ms to remove initial click
+    const fadeIn = Math.floor(ac.sampleRate * 0.02);
+    for (let i = 0; i < len; i++) {
+      const envelope = Math.pow(1 - i / len, decay);
+      const fadeInGain = i < fadeIn ? (i / fadeIn) : 1;
+      d[i] = (Math.random() * 2 - 1) * envelope * fadeInGain;
+    }
   }
   const conv = ac.createConvolver();
   conv.buffer = buf;
+  // Add a gentle low-pass filter after reverb to soften harshness
+  const lpf = ac.createBiquadFilter();
+  lpf.type = 'lowpass';
+  lpf.frequency.value = 4000;
+  lpf.Q.value = 0.5;
+  conv.connect(lpf);
+  lpf.connect(masterGain);
+  // Disconnect conv from masterGain so it goes through lpf instead
   return conv;
 }
 
